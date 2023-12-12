@@ -1,28 +1,16 @@
-<?xml version="1.0" ?>
+<?xml version="1.0"?>
 <robot name="hook">
-  <link name="hook">
-    <inertial>
-      <density value="500.0"/>
-      <!-- <mass value=".25"/>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/> -->
-    </inertial>
-    <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <geometry>
-        <!-- <sphere radius=".0375"/> -->
-          <mesh filename="meshes/hook.obj"/>
-      </geometry>
-      <material name="Grey">
-        <color rgba="0.65 0.65 0.65 1"/>
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <geometry>
-        <!-- <sphere radius=".0375"/> -->
-        <mesh filename="meshes/hook.obj"/>
-      </geometry>
-    </collision>
-  </link>
+    <link name="hook">
+        <visual>
+            <geometry>
+                <mesh filename="meshes/hook.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <mesh filename="meshes/hook.obj"/>
+            </geometry>
+            <!-- <sdf resolution="256"/> -->
+        </collision>
+    </link>
 </robot>

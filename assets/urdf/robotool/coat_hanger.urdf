@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<robot name="coat_hanger">
+  <link name="coat_hanger">
+    <inertial>
+      <!-- <density value="1000.0"/> -->
+      <mass value="0.25"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/> -->
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.1 -0.05 0.02"/>
+      <geometry>
+        <!-- <sphere radius=".0375"/> -->
+          <mesh filename="meshes/coat_hanger.obj"/>
+      </geometry>
+      <material name="Grey">
+        <color rgba="0.65 0.65 0.65 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.1 -0.05 0.02"/>
+      <geometry>
+        <!-- <sphere radius=".0375"/> -->
+        <mesh filename="meshes/coat_hanger.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

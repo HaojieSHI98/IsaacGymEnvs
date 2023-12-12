@@ -33,7 +33,7 @@ import torch
 from isaacgym import gymtorch
 from isaacgym import gymapi
 
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp  
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp,quat_apply 
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 
@@ -225,7 +225,10 @@ class FrankaCubeStack(VecTask):
 
         # Create cubeA asset
         cubeA_opts = gymapi.AssetOptions()
-        cubeA_asset = self.gym.create_box(self.sim, *([self.cubeA_size] * 3), cubeA_opts)
+        tool_asset_file = "urdf/robotool/coat_hanger.urdf"
+        cubeA_asset = self.gym.load_asset(
+            self.sim, asset_root, tool_asset_file, cubeA_opts)
+        # cubeA_asset = self.gym.create_box(self.sim, *([self.cubeA_size] * 3), cubeA_opts)
         cubeA_color = gymapi.Vec3(0.6, 0.1, 0.0)
 
         # Create cubeB asset
@@ -337,6 +340,8 @@ class FrankaCubeStack(VecTask):
             # Create cubes
             self._cubeA_id = self.gym.create_actor(env_ptr, cubeA_asset, cubeA_start_pose, "cubeA", i, 2, 0)
             self._cubeB_id = self.gym.create_actor(env_ptr, cubeB_asset, cubeB_start_pose, "cubeB", i, 4, 0)
+            # props = self.gym.get_actor_rigid_body_properties(env_ptr, self._cubeA_id)[0]
+            # print(props.mass)
             # Set colors
             self.gym.set_rigid_body_color(env_ptr, self._cubeA_id, 0, gymapi.MESH_VISUAL, cubeA_color)
             self.gym.set_rigid_body_color(env_ptr, self._cubeB_id, 0, gymapi.MESH_VISUAL, cubeB_color)

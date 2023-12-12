@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<robot name="hanger">
+  <link name="hanger">
+    <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0"/>
+      <geometry>
+        <!-- <sphere radius=".0375"/> -->
+          <mesh filename="meshes/Chrome Metal Hanger.obj"/>
+      </geometry>
+      <material name="Grey">
+        <color rgba="0.65 0.65 0.65 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0"/>
+      <geometry>
+        <!-- <sphere radius=".0375"/> -->
+        <mesh filename="meshes/Chrome Metal Hanger.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

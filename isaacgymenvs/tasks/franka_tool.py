@@ -106,7 +106,7 @@ class FrankaTool(VecTask):
 
         # dimensions
         # obs include: cubeA_pose (7) + cubeB_pos (3) + eef_pose (7) + q_gripper (2) + cubeB_pos2desire (2)
-        self.cfg["env"]["numObservations"] = 24 if self.control_type == "osc" else 31
+        self.cfg["env"]["numObservations"] = 21 if self.control_type == "osc" else 28
         # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
         self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
 
@@ -254,6 +254,16 @@ class FrankaTool(VecTask):
 
         # Create cubeA asset
         cubeA_opts = gymapi.AssetOptions()
+        cubeA_opts.fix_base_link = False
+        cubeA_opts.flip_visual_attachments = False
+        cubeA_opts.use_mesh_materials = True
+        cubeA_opts.armature = 0.01
+        # cubeA_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+        # cubeA_opts.override_com = True
+        # cubeA_opts.override_inertia = True
+        cubeA_opts.vhacd_enabled = True
+        cubeA_opts.vhacd_params = gymapi.VhacdParams()
+        cubeA_opts.vhacd_params.resolution = 500000
         cubeA_asset = self.gym.load_asset(
             self.sim, asset_root, tool_asset_file, cubeA_opts)
         # cubeA_asset = self.gym.create_box(self.sim, *([self.cubeA_size] * 3), cubeA_opts)
@@ -424,7 +434,7 @@ class FrankaTool(VecTask):
             "rightfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_rightfinger_tip"),
             "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_grip_site"),
             # Cubes
-            "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
+            "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "hook"),
             "cubeB_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeB_id, "box"),
         }
 
@@ -494,13 +504,13 @@ class FrankaTool(VecTask):
 
     def _update_states(self):
         self._cubeA_hook_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(self._cubeA_state[:, 3:7], to_torch(
-            [0.16-self.cubeB_size/2, 0.04+self.cubeB_size/2, self.cubeB_size/2]*self.num_envs, device=self.device).reshape(-1, 3))
-        self._cubeA_center_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
-            self._cubeA_state[:, 3:7], to_torch([0.06, 0.02, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
-        self._cubeA_centerleft_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
-            self._cubeA_state[:, 3:7], to_torch([0.06, -0.03, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
-        self._cubeA_centerright_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
-            self._cubeA_state[:, 3:7], to_torch([0.06, 0.07, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
+            [0.15-self.cubeB_size/2-0.03, 0.01+self.cubeB_size/2+0.02, 0]*self.num_envs, device=self.device).reshape(-1, 3))
+        # self._cubeA_center_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
+        #     self._cubeA_state[:, 3:7], to_torch([0.06, 0.02, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
+        # self._cubeA_centerleft_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
+        #     self._cubeA_state[:, 3:7], to_torch([0.06, -0.03, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
+        # self._cubeA_centerright_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
+        #     self._cubeA_state[:, 3:7], to_torch([0.06, 0.07, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
         self.states.update({
             # Franka
             "q": self._q[:, :],
@@ -513,12 +523,9 @@ class FrankaTool(VecTask):
             # Cubes
             "cubeA_quat": self._cubeA_state[:, 3:7],
             "cubeA_pos": self._cubeA_state[:, :3],
-            "cubeA_pos_relative": self._cubeA_center_pos - self._eef_state[:, :3],
             "cubeB_quat": self._cubeB_state[:, 3:7],
             "cubeB_pos": self._cubeB_state[:, :3],
-            "cubeA_center_pos": self._cubeA_center_pos,
-            "cubeA_centerleft_pos": self._cubeA_centerleft_pos,
-            "cubeA_centerright_pos": self._cubeA_centerright_pos,
+            "cubeA_pos_relative":self._cubeA_state[:, :3]-self._eef_state[:, :3],
             "cubeAhook_to_cubeB_pos": self._cubeB_state[:, :3] - self._cubeA_hook_pos[:, :3],
             "cubeB_to_desire": self._cubeB_desired_pos-self._cubeB_state[:, :2],
         })
@@ -541,7 +548,7 @@ class FrankaTool(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cubeA_quat", "cubeA_pos", "cubeA_pos_relative","cubeAhook_to_cubeB_pos",
+        obs = ["cubeA_quat", "cubeA_pos","cubeAhook_to_cubeB_pos",
                "cubeB_to_desire", "eef_pos", "eef_quat"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
@@ -749,7 +756,7 @@ class FrankaTool(VecTask):
 
         # Split arm and gripper command
         u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]
-
+        # u_gripper*=0
         # print("u_arm:",u_arm, u_gripper)
         # print(self.cmd_limit, self.action_scale,self.control_type)
 
@@ -801,8 +808,8 @@ class FrankaTool(VecTask):
 
             # Plot visualizations
             for i in range(self.num_envs):
-                # for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos,self._cubeA_hook_pos,self._cubeA_center_pos,eef_lf_pos), (eef_rot, cubeA_rot, cubeB_rot,cubeA_rot,cubeA_rot,eef_rot)):
-                for pos, rot in zip((self.states["cubeA_center_pos"], self.states["cubeA_centerleft_pos"], self.states["cubeA_centerright_pos"], eef_pos), (cubeA_rot, cubeA_rot, cubeA_rot, eef_rot)):
+                for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos,self._cubeA_hook_pos), (eef_rot, cubeA_rot, cubeB_rot,cubeA_rot)):
+                # for pos, rot in zip((self.states["cubeA_center_pos"], self.states["cubeA_centerleft_pos"], self.states["cubeA_centerright_pos"], eef_pos), (cubeA_rot, cubeA_rot, cubeA_rot, eef_rot)):
                     px = (pos[i] + torch_utils.quat_apply(rot[i],
                           to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
                     py = (pos[i] + torch_utils.quat_apply(rot[i],
@@ -818,9 +825,9 @@ class FrankaTool(VecTask):
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [
                                        p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]], [0.1, 0.1, 0.85])
 
-                # self.gym.add_lines(self.viewer, self.envs[i], 1, [self._cubeB_desired_pos[i,0].item(), self._cubeB_desired_pos[i,1].item(), \
-                #                                                 self.reward_settings["table_height"], self._cubeB_desired_pos[i,0].item(), self._cubeB_desired_pos[i,1].item(), \
-                #                                                 self.reward_settings["table_height"]+0.2], [0.85, 0.1, 0.1])
+                self.gym.add_lines(self.viewer, self.envs[i], 1, [self._cubeB_desired_pos[i,0].item(), self._cubeB_desired_pos[i,1].item(), \
+                                                                self.reward_settings["table_height"], self._cubeB_desired_pos[i,0].item(), self._cubeB_desired_pos[i,1].item(), \
+                                                                self.reward_settings["table_height"]+0.2], [0.85, 0.1, 0.1])
 #####################################################################
 ### =========================jit functions=========================###
 #####################################################################
@@ -840,10 +847,12 @@ def compute_franka_reward(
     # distance from hand to the cubeA
     d = torch.norm(states["cubeA_pos_relative"], dim=-1)
     d_lf = torch.norm(
-        (states["cubeA_centerleft_pos"] - states["eef_lf_pos"]), dim=-1)
+        (states["cubeA_pos"] - states["eef_lf_pos"]), dim=-1)
     d_rf = torch.norm(
-        (states["cubeA_centerright_pos"] - states["eef_rf_pos"]), dim=-1)
-    dist_reward = 1 - torch.tanh(20.0 * (d + d_lf + d_rf) / 3)
+        (states["cubeA_pos"] - states["eef_rf_pos"]), dim=-1)
+    dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
+    # dist_reward = 1 - torch.tanh(10.0 * d)
+    # print("d:",d[:5],dist_reward[:5])
     # print("dis:",d[:2],d_lf[:2],d_rf[:2],dist_reward[:2])
     # reward for lifting cubeA
     z_axis_vec = torch.zeros_like(states["cubeA_pos"]).to(
@@ -855,7 +864,8 @@ def compute_franka_reward(
     up = torch_utils.quat_rotate(states["cubeA_quat"], z_axis_vec)
     projected_z = up[..., 2]
     # print("proj:",projected_z)
-    tool_upward = 1-torch.tanh(20*(1-projected_z))
+    # tool_upward = 1-torch.tanh(20*(1-projected_z))
+    tool_upward = projected_z>0.96
 
     x_robot = torch_utils.quat_apply(states["eef_quat"], x_axis_vec)
     x_tool = torch_utils.quat_apply(states["cubeA_quat"], x_axis_vec)
@@ -873,15 +883,16 @@ def compute_franka_reward(
 
     # how closely aligned cubeA is to cubeB (only provided if cubeA is lifted)
     offset = torch.zeros_like(states["cubeAhook_to_cubeB_pos"])
-    offset[:, 2] = 0.04
+    offset[:, 2] = 0.02
     d_ab = torch.norm(states["cubeAhook_to_cubeB_pos"] + offset, dim=-1)
     align_reward = (1 - torch.tanh(10.0 * d_ab)) * cubeA_lifted
 
     cubeB_goal_dist = torch.norm(states["cubeB_to_desire"], dim=-1)
-    goal_reward = (1 - torch.tanh(10.0 * cubeB_goal_dist)) * cubeA_lifted
-    align_reward_all = torch.max(align_reward, goal_reward)
+    goal_reward = (1 - torch.tanh(5.0 * cubeB_goal_dist)) * cubeA_lifted
+    # print("dis:",cubeB_goal_dist[:2],goal_reward[:2])
+    # align_reward_all = torch.max(align_reward, goal_reward)
     # Dist reward is maximum of dist and align reward
-    dist_reward = torch.max(dist_reward, align_reward_all)
+    # dist_reward = torch.max(dist_reward, align_reward_all)
 
     # final reward for stacking successfully (only if cubeA is close to target height and corresponding location, and gripper is not grasping)
     # cubeA_align_cubeB = (torch.norm(states["cubeAhook_to_cubeB_pos"][:, :2], dim=-1) < 0.02)
