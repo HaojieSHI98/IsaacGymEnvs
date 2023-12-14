@@ -890,9 +890,9 @@ def compute_franka_reward(
     z_tool = torch_utils.quat_apply(states["cubeA_quat"], z_axis_vec)
     y_hanger =  torch_utils.quat_apply(states["cubeB_quat"], y_axis_vec)
     zy_toolhanger = (d_ab<0.25)*(1-torch.tanh(torch.log(1+10* torch.abs(torch.sum(z_tool*y_hanger,dim=-1)))))
-    # print(d_ab[:5])
+    # print(d_ab[:5],zy_toolhanger[:5])
     height_diff = states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]
-    goal_rewards = (1-torch.tanh(torch.log(1+10*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]+0.3))))* cubeA_lifted
+    goal_rewards = (d_ab<0.05)*(1-torch.tanh(torch.log(1+10*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]+0.3))))* cubeA_lifted
     # print("H_diff:",torch.max(goal_rewards),torch.median(goal_rewards),torch.max(height_diff),torch.median(height_diff))
     # We either provide the stack reward or the align + dist reward
     rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + reward_settings[
@@ -908,7 +908,7 @@ def compute_franka_reward(
             "toolgripper":toolgriper_normal_reward[:2],
             "goal":goal_rewards[:2],
             "zytool":zy_toolhanger[:2]}
-    # print(info)
+    # print("info:",info)
 
     reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<-0.4), torch.ones_like(reset_buf), reset_buf)
 
