@@ -840,7 +840,7 @@ class FrankaHanger(VecTask):
 def compute_franka_reward(
     reset_buf, progress_buf, actions, states, reward_settings, max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor,Dict[str, Tensor]]
+    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor,Dict[str, number]]
 
     # Compute per-env physical parameters
     target_height = states["cubeB_size"] + states["cubeA_size"] / 2.0
@@ -874,8 +874,8 @@ def compute_franka_reward(
     tool_orientated = tool_orientation<0.1
 
     cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]
-    cubeA_lifted = cubeA_height > 0.04
-    lift_reward = cubeA_lifted
+    cubeA_lifted = cubeA_height > 0.1
+    lift_reward = 1-torch.tanh(torch.log(1+20*(0.1-cubeA_height.clamp(0,0.1))))
     # print("h:",torch.min(cubeA_height),torch.max(cubeA_height))
 
     # how closely aligned cubeA is to cubeB (only provided if cubeA is lifted)
@@ -900,14 +900,14 @@ def compute_franka_reward(
             reward_settings['r_goal_scale']*goal_rewards+reward_settings['r_zytool_scale']*zy_toolhanger
 
     info = {
-            "dist_reward": dist_reward[:2],
-            "life_reward": lift_reward[:2],
-            "align_reward": align_reward[:2],
-            "goal_reward":goal_rewards[:2],
-            "tool_ori":tool_orientation[:2],
-            "toolgripper":toolgriper_normal_reward[:2],
-            "goal":goal_rewards[:2],
-            "zytool":zy_toolhanger[:2]}
+            "dist_reward": torch.mean(dist_reward).item(),
+            "life_reward": torch.mean(lift_reward.float()).item(),
+            "align_reward": torch.mean(align_reward).item(),
+            "goal_reward":torch.mean(goal_rewards).item(),
+            "tool_ori":torch.mean(tool_orientation).item(),
+            "toolgripper":torch.mean(toolgriper_normal_reward).item(),
+            "goal":torch.mean(goal_rewards).item(),
+            "zytool":torch.mean(zy_toolhanger).item()}
     # print("info:",info)
 
     reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<-0.4), torch.ones_like(reset_buf), reset_buf)

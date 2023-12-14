@@ -38,6 +38,7 @@ from .factory.factory_task_nut_bolt_place import FactoryTaskNutBoltPlace
 from .factory.factory_task_nut_bolt_screw import FactoryTaskNutBoltScrew
 from .franka_cabinet import FrankaCabinet
 from .franka_cube_stack import FrankaCubeStack
+from .franka_tool_select import FrankaToolSelect
 from .franka_tool import FrankaTool
 from .franka_hanger import FrankaHanger
 from .humanoid import Humanoid
@@ -108,6 +109,7 @@ isaacgym_task_map = {
     "FrankaCabinet": FrankaCabinet,
     "FrankaCubeStack": FrankaCubeStack,
     "FrankaTool":FrankaTool,
+    "FrankaToolSelect":FrankaToolSelect,
     "FrankaHanger":FrankaHanger,
     "Humanoid": Humanoid,
     "HumanoidAMP": HumanoidAMP,
