@@ -107,7 +107,7 @@ class FrankaHanger(VecTask):
 
         # dimensions
         # obs include: cubeA_pose (7) + cubeB_pos (3) + eef_pose (7) + q_gripper (2) + cubeB_pos2desire (2)
-        self.cfg["env"]["numObservations"] = 19 if self.control_type == "osc" else 26
+        self.cfg["env"]["numObservations"] = 26 if self.control_type == "osc" else 33
         # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
         self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
 
@@ -583,7 +583,7 @@ class FrankaHanger(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cubeA_quat", "cubeA_pos", "cubeAhook_to_cubeB_pos", "eef_pos", "eef_quat"]
+        obs = ["cubeA_quat", "cubeA_pos", "cubeAhook_to_cubeB_pos","cubeB_pos","cubeB_quat", "eef_pos", "eef_quat"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
 
@@ -853,7 +853,7 @@ def compute_franka_reward(
         (states["cubeA_pos"] - states["eef_lf_pos"]), dim=-1)
     d_rf = torch.norm(
         (states["cubeA_pos"] - states["eef_rf_pos"]), dim=-1)
-    dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
+    dist_reward = 1 - torch.tanh(torch.log(1+10.0 * (d + d_lf + d_rf) / 3))
     # print("d:",torch.min(d),torch.max(d))
     # reward for lifting cubeA
     z_axis_vec = torch.zeros_like(states["cubeA_pos"]).to(
@@ -869,12 +869,12 @@ def compute_franka_reward(
     x_robot = torch_utils.quat_apply(states["eef_quat"], x_axis_vec)
     x_tool = torch_utils.quat_apply(states["cubeA_quat"], x_axis_vec)
     x_dis = torch.norm(x_robot-x_tool, dim=-1)
-    toolgriper_normal_reward = 1 - torch.tanh(10*x_dis)
-    tool_orientation = 1-torch.tanh(10*torch.norm(z_axis_vec-x_tool, dim=-1))
+    toolgriper_normal_reward = 1 - torch.tanh(torch.log(1+10*x_dis))
+    tool_orientation = 1-torch.tanh(torch.log(1+10*torch.norm(z_axis_vec-x_tool, dim=-1)))
     tool_orientated = tool_orientation<0.1
 
     cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]
-    cubeA_lifted = cubeA_height > 0.1
+    cubeA_lifted = cubeA_height > 0.04
     lift_reward = cubeA_lifted
     # print("h:",torch.min(cubeA_height),torch.max(cubeA_height))
 
@@ -883,15 +883,16 @@ def compute_franka_reward(
     offset[:, 2] = 0.0
     d_ab = torch.norm(states["cubeAhook_to_cubeB_pos"] + offset, dim=-1)
     # align_reward = (1 - torch.tanh(3.0 * d_ab)) * cubeA_lifted
-    align_reward = (1 - torch.tanh(10.0 * d_ab)) * cubeA_lifted
-    # print("d_ab:",torch.min(d_ab).item(),torch.max(d_ab).item(),torch.min(align_reward).item(),torch.max(align_reward).item(),torch.min(align_reward2).item(),torch.max(align_reward2).item())
+    align_reward = (1 - torch.tanh(torch.log(1+ 10*d_ab))) * cubeA_lifted
+    # print("d_ab:",3*d_ab[:2],torch.log(1+10*d_ab[:2]),torch.log(1+5*d_ab[:2]))
+    # print("d_ab:",torch.min(d_ab).item(),torch.max(d_ab).item(),torch.min(align_reward).item(),torch.max(align_reward).item())
 
     z_tool = torch_utils.quat_apply(states["cubeA_quat"], z_axis_vec)
     y_hanger =  torch_utils.quat_apply(states["cubeB_quat"], y_axis_vec)
-    zy_toolhanger = (d_ab<0.25)*(1-torch.tanh(5* torch.abs(torch.sum(z_tool*y_hanger,dim=-1))))
+    zy_toolhanger = (d_ab<0.25)*(1-torch.tanh(torch.log(1+10* torch.abs(torch.sum(z_tool*y_hanger,dim=-1)))))
     # print(d_ab[:5])
     height_diff = states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]
-    goal_rewards = (1-torch.tanh(15*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]-0.15)))* cubeA_lifted
+    goal_rewards = (1-torch.tanh(torch.log(1+10*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]+0.3))))* cubeA_lifted
     # print("H_diff:",torch.max(goal_rewards),torch.median(goal_rewards),torch.max(height_diff),torch.median(height_diff))
     # We either provide the stack reward or the align + dist reward
     rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + reward_settings[
@@ -909,6 +910,6 @@ def compute_franka_reward(
             "zytool":zy_toolhanger[:2]}
     # print(info)
 
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<-0.2), torch.ones_like(reset_buf), reset_buf)
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<-0.4), torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf, info

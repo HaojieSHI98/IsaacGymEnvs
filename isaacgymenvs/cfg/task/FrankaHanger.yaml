@@ -25,7 +25,7 @@ env:
   actionScale: 1.0
   distRewardScale: 0.2
   liftRewardScale: 1.0
-  alignRewardScale: 5.0
+  alignRewardScale: 10.0
   tooloriRewardScale: 1.0
   toolgripperRewardScale: 0.1
   goalRewardScale: 30.0
