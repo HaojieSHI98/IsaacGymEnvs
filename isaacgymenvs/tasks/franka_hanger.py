@@ -107,7 +107,7 @@ class FrankaHanger(VecTask):
 
         # dimensions
         # obs include: cubeA_pose (7) + cubeB_pos (3) + eef_pose (7) + q_gripper (2) + cubeB_pos2desire (2)
-        self.cfg["env"]["numObservations"] = 26 if self.control_type == "osc" else 33
+        self.cfg["env"]["numObservations"] = 29 if self.control_type == "osc" else 36
         # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
         self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
 
@@ -123,6 +123,7 @@ class FrankaHanger(VecTask):
         # Initial state of cubeB for the current env
         self._init_cubeB_state = None
         self._init_pole_state = None
+        self._init_tableput_state = None
         self._pole_state = None
         self._cubeA_state = None                # Current state of cubeA for the current env
         self._cubeB_state = None                # Current state of cubeB for the current env
@@ -131,6 +132,7 @@ class FrankaHanger(VecTask):
         # Actor ID corresponding to cubeB for a given env
         self._cubeB_id = None
         self._pole_id = None
+        self._tableput_id = None
 
         # Tensor placeholders
         # State of root body        (n_envs, 13)
@@ -244,7 +246,7 @@ class FrankaHanger(VecTask):
         table_opts = gymapi.AssetOptions()
         table_opts.fix_base_link = True
         table_asset = self.gym.create_box(
-            self.sim, *[1.2, 1.2, table_thickness], table_opts)
+            self.sim, *[2.5, 2.5, table_thickness], table_opts)
 
         # Create table stand asset
         table_stand_height = 0.1
@@ -255,6 +257,11 @@ class FrankaHanger(VecTask):
         table_stand_asset = self.gym.create_box(
             self.sim, *[0.2, 0.2, table_stand_height], table_opts)
 
+        table_put_height = 0.4
+        table_put_pos = [0.8,-0.6,1.0 +
+                           table_thickness / 2 + table_put_height / 2]
+        table_put_asset = self.gym.create_box(
+            self.sim, *[0.4, 0.4, table_put_height], table_opts)
         self.cubeA_size = 0.2
         self.cubeA_height = 0.080
         self.cubeB_size = 0.070
@@ -354,6 +361,10 @@ class FrankaHanger(VecTask):
         table_stand_start_pose.p = gymapi.Vec3(*table_stand_pos)
         table_stand_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+        table_put_start_pose = gymapi.Transform()
+        table_put_start_pose.p = gymapi.Vec3(*table_put_pos)
+        table_put_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
         # Define start pose for cubes (doesn't really matter since they're get overridden during reset() anyways)
         cubeA_start_pose = gymapi.Transform()
         cubeA_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
@@ -414,8 +425,10 @@ class FrankaHanger(VecTask):
             # Create table
             table_actor = self.gym.create_actor(
                 env_ptr, table_asset, table_start_pose, "table", i, 1, 0)
-            # table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_start_pose, "table_stand",
-            #                                           i, 1, 0)
+            table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_start_pose, "table_stand",
+                                                      i, 1, 0)
+            self._tableput_id = self.gym.create_actor(env_ptr, table_put_asset, table_put_start_pose, "table_put",
+                                                      i, 1, 0)
             self._pole_id = self.gym.create_actor(
                 env_ptr, pole_asset, pole_start_pose, "pole", i, 1, 0)
 
@@ -451,7 +464,8 @@ class FrankaHanger(VecTask):
             self.num_envs, 13, device=self.device)
         self._init_pole_state = torch.zeros(
             self.num_envs, 13, device=self.device)
-
+        self._init_tableput_state = torch.zeros(
+            self.num_envs, 13, device=self.device)
         # Setup data
         self.init_data()
 
@@ -504,10 +518,13 @@ class FrankaHanger(VecTask):
         self._cubeA_state = self._root_state[:, self._cubeA_id, :]
         self._cubeB_state = self._root_state[:, self._cubeB_id, :]
         self._pole_state = self._root_state[:, self._pole_id, :]
+        self._tableput_state = self._root_state[:, self._tableput_id, :]
 
         self._cubeA_hook_pos = torch.ones_like(
             self._root_state[:, self._cubeB_id, :3])
         self._cubeB_real_pos = torch.ones_like(
+            self._root_state[:, self._cubeB_id, :3])
+        self._goal_pos = torch.ones_like(
             self._root_state[:, self._cubeB_id, :3])
         self._cubeA_center_pos = torch.ones_like(
             self._root_state[:, self._cubeB_id, :3])
@@ -532,7 +549,7 @@ class FrankaHanger(VecTask):
         self._gripper_control = self._pos_control[:, 7:9]
 
         # Initialize indices
-        self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
+        self._global_indices = torch.arange(self.num_envs * 7, dtype=torch.int32,
                                             device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
@@ -540,6 +557,8 @@ class FrankaHanger(VecTask):
             [0.6, 0, 0.02]*self.num_envs, device=self.device).reshape(-1, 3))
         self._cubeB_real_pos = self._cubeB_state[:, :3]+torch_utils.quat_apply(self._cubeB_state[:, 3:7], to_torch(
             [0.0, 0, 0.02]*self.num_envs, device=self.device).reshape(-1, 3))
+        self._goal_pos = self._tableput_state[:,:3]+to_torch([0.0, 0, 0.2])
+        
         # self._cubeA_center_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
         #     self._cubeA_state[:, 3:7], to_torch([0.06, 0.02, 0.05]*self.num_envs, device=self.device).reshape(-1, 3))
         # self._cubeA_centerleft_pos = self._cubeA_state[:, :3]+torch_utils.quat_apply(
@@ -562,6 +581,7 @@ class FrankaHanger(VecTask):
             "cubeB_pos": self._cubeB_real_pos[:, :3],
             "cubeA_pos_relative": self._cubeA_state[:, :3]-self._eef_state[:, :3],
             "cubeAhook_to_cubeB_pos": self._cubeB_real_pos[:, :3] - self._cubeA_hook_pos[:, :3],
+            "cubeB_to_goal":self._goal_pos[:,:3]-self._cubeB_real_pos[:,:3],
             "pole_pos":self._pole_state[:,:3],
         })
 
@@ -583,7 +603,7 @@ class FrankaHanger(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cubeA_quat", "cubeA_pos", "cubeAhook_to_cubeB_pos","cubeB_pos","cubeB_quat", "eef_pos", "eef_quat"]
+        obs = ["cubeA_quat", "cubeA_pos", "cubeAhook_to_cubeB_pos","cubeB_pos","cubeB_quat", "eef_pos", "eef_quat","cubeB_to_goal"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
 
@@ -603,6 +623,8 @@ class FrankaHanger(VecTask):
         centered_cube_xy_state = torch.tensor(
             self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
         # self._i = True
+        self._reset_init_tableput(env_ids=env_ids)
+        self._tableput_state[env_ids] = self._init_tableput_state[env_ids]
 
         # Write these new init states to the sim states
         # print(self._init_cubeA_state)
@@ -652,7 +674,7 @@ class FrankaHanger(VecTask):
                                               len(multi_env_ids_int32))
 
         # Update cube states
-        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -3:].flatten(
+        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -4:].flatten(
         )
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self._root_state),
@@ -660,6 +682,34 @@ class FrankaHanger(VecTask):
 
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
+    
+    def _reset_init_tableput(self,env_ids):
+        num_resets = len(env_ids)
+        cubeA_hook_pos = self._init_cubeA_state[env_ids, :3]+torch_utils.quat_apply(self._init_cubeA_state[env_ids, 3:7], to_torch(
+            [0.6, 0, 0.02]*num_resets, device=self.device).reshape(-1, 3))
+        active_idx = torch.arange(num_resets, device=self.device)
+        num_active_idx = len(active_idx)
+        sampled_cube_state = torch.zeros(num_resets, 13, device=self.device)
+        success = False
+        for i in range(1000):
+            rand = torch.rand_like(sampled_cube_state[active_idx, :2]) - 0.5
+            rand[:,0] = rand[:,0]/2+0.75
+            rand[:,1] = rand[:,1]*2*0.6
+            sampled_cube_state[active_idx, :2] = rand
+            cube_dist = torch.linalg.norm(sampled_cube_state[:, :2] - cubeA_hook_pos[:, :2], dim=-1)
+            active_idx = torch.nonzero(cube_dist < 0.6, as_tuple=True)[0]
+            num_active_idx = len(active_idx)
+            # If active idx is empty, then all sampling is valid :D
+            if num_active_idx == 0:
+                success = True
+                break
+        assert success, "Sampling cube locations was unsuccessful! ):"
+        sampled_cube_state[:,2] = 1.025+0.2
+        sampled_cube_state[:, 6] = 1.0
+        aa_rot = torch.zeros(num_resets, 3, device=self.device)
+        aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+        sampled_cube_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_cube_state[:, 3:7])
+        self._init_tableput_state[env_ids,:] = sampled_cube_state
 
     def _reset_init_cube_state(self, cube, env_ids, check_valid=True):
         """
@@ -814,7 +864,7 @@ class FrankaHanger(VecTask):
 
             # Plot visualizations
             for i in range(self.num_envs):
-                for pos, rot in zip((eef_pos, cubeA_pos, self._cubeB_real_pos, self._cubeA_hook_pos), (eef_rot, cubeA_rot, cubeB_rot, cubeA_rot)):
+                for pos, rot in zip((eef_pos, cubeA_pos, self._cubeB_real_pos, self._cubeA_hook_pos,self._goal_pos), (eef_rot, cubeA_rot, cubeB_rot, cubeA_rot,self._tableput_state[:,3:7])):
                     # for pos, rot in zip((self.states["cubeA_center_pos"], self.states["cubeA_centerleft_pos"], self.states["cubeA_centerright_pos"], eef_pos), (cubeA_rot, cubeA_rot, cubeA_rot, eef_rot)):
                     px = (pos[i] + torch_utils.quat_apply(rot[i],
                           to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
@@ -891,9 +941,11 @@ def compute_franka_reward(
     y_hanger =  torch_utils.quat_apply(states["cubeB_quat"], y_axis_vec)
     zy_toolhanger = (d_ab<0.25)*(1-torch.tanh(torch.log(1+10* torch.abs(torch.sum(z_tool*y_hanger,dim=-1)))))
     # print(d_ab[:5],zy_toolhanger[:5])
-    height_diff = states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]
-    goal_rewards = (d_ab<0.05)*(1-torch.tanh(torch.log(1+10*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]+0.3))))* cubeA_lifted
-    # print("H_diff:",torch.max(goal_rewards),torch.median(goal_rewards),torch.max(height_diff),torch.median(height_diff))
+    height_diff = states["cubeB_pos"][:,2]-1.025
+    goal_dis = torch.norm(states["cubeB_to_goal"],dim=-1)
+    goal_rewards = (d_ab<0.05)*(1-torch.tanh(torch.log(1+10*goal_dis)))* cubeA_lifted
+    # goal_rewards = (d_ab<0.05)*(1-torch.tanh(torch.log(1+10*torch.abs(states["cubeB_pos"][:,2]+0.07-states["pole_pos"][:,2]+0.3))))* cubeA_lifted
+    # print("H_diff:",torch.min(height_diff),torch.max(height_diff),torch.max(goal_rewards),torch.median(goal_rewards),torch.min(goal_dis),torch.median(goal_dis))
     # We either provide the stack reward or the align + dist reward
     rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + reward_settings[
             "r_align_scale"] * align_reward +reward_settings["r_toolori_scale"]*tool_orientation+reward_settings["r_toolgripper_scale"]*toolgriper_normal_reward+\
@@ -910,6 +962,6 @@ def compute_franka_reward(
             "zytool":torch.mean(zy_toolhanger).item()}
     # print("info:",info)
 
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<-0.4), torch.ones_like(reset_buf), reset_buf)
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1)| (height_diff<0.3), torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf, info

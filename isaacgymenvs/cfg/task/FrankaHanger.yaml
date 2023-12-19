@@ -28,7 +28,7 @@ env:
   alignRewardScale: 10.0
   tooloriRewardScale: 1.0
   toolgripperRewardScale: 0.1
-  goalRewardScale: 30.0
+  goalRewardScale: 60.0
   zytoolRewardScale: 5.0
 
   controlType: osc  # options are {joint_tor, osc}

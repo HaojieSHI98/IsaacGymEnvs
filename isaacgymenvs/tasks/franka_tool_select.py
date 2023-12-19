@@ -211,7 +211,7 @@ class FrankaToolSelect(VecTask):
         table_thickness = 0.05
         table_opts = gymapi.AssetOptions()
         table_opts.fix_base_link = True
-        table_asset = self.gym.create_box(self.sim, *[1.2, 1.2, table_thickness], table_opts)
+        table_asset = self.gym.create_box(self.sim, *[2.5, 2.5, table_thickness], table_opts)
 
         # Create table stand asset
         table_stand_height = 0.1
@@ -225,7 +225,13 @@ class FrankaToolSelect(VecTask):
 
         # Create cubeA asset
         cubeA_opts = gymapi.AssetOptions()
-        tool_asset_file = "urdf/robotool/coat_hanger.urdf"
+        cubeA_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+        cubeA_opts.override_inertia = True
+        cubeA_opts.override_com = True
+        cubeA_opts.vhacd_enabled = True
+        cubeA_opts.vhacd_params = gymapi.VhacdParams()
+        cubeA_opts.vhacd_params.resolution = 500000
+        tool_asset_file = "urdf/robotool/stick1_L70_W6_H5.urdf"
         cubeA_asset = self.gym.load_asset(
             self.sim, asset_root, tool_asset_file, cubeA_opts)
         # cubeA_asset = self.gym.create_box(self.sim, *([self.cubeA_size] * 3), cubeA_opts)
@@ -233,11 +239,22 @@ class FrankaToolSelect(VecTask):
 
         # Create cubeB asset
         cubeB_opts = gymapi.AssetOptions()
-        tool_asset_file = "urdf/ycb/011_banana/011_banana.urdf"
+        cubeB_opts.use_mesh_materials = True
+        cubeB_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+        cubeB_opts.override_inertia = True
+        cubeB_opts.override_com = True
+        cubeB_opts.vhacd_enabled = True
+        tool_asset_file = "urdf/ycb_obj/YcbBanana/model.urdf"
         cubeB_asset = self.gym.load_asset(
             self.sim, asset_root, tool_asset_file, cubeB_opts)
         # cubeB_asset = self.gym.create_box(self.sim, *([self.cubeB_size] * 3), cubeB_opts)
-        cubeB_color = gymapi.Vec3(0.0, 0.4, 0.1)
+        tool_asset_file = "urdf/ycb_obj/YcbPear/model.urdf"
+        cubeC_asset = self.gym.load_asset(
+            self.sim, asset_root, tool_asset_file, cubeB_opts)
+        tool_asset_file = "urdf/ycb_obj/YcbMustardBottle/model.urdf"
+        cubeD_asset = self.gym.load_asset(
+            self.sim, asset_root, tool_asset_file, cubeA_opts)
+        cubeD_color = gymapi.Vec3(0.0, 0.4, 0.1)
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
@@ -290,21 +307,31 @@ class FrankaToolSelect(VecTask):
 
         # Define start pose for cubes (doesn't really matter since they're get overridden during reset() anyways)
         cubeA_start_pose = gymapi.Transform()
-        cubeA_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
+        cubeA_start_pose.p = gymapi.Vec3(-0.05, 0.2,1.05)
         cubeA_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         cubeB_start_pose = gymapi.Transform()
-        cubeB_start_pose.p = gymapi.Vec3(1.0, 0.0, 0.0)
+        cubeB_start_pose.p = gymapi.Vec3(0.0, 0.4, 1.05)
         cubeB_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-
+        cubeC_start_pose = gymapi.Transform()
+        cubeC_start_pose.p = gymapi.Vec3(0.0, 0.7, 1.05)
+        cubeC_start_pose.r = gymapi.Quat(1.57, 0.0, 0.0, 1.0)
+        cubeD_start_pose = gymapi.Transform()
+        cubeD_start_pose.p = gymapi.Vec3(0.0, 0.9, 1.05)
+        cubeD_start_pose.r = gymapi.Quat(1.57, 0.0, 0.0, 1.0)
         # compute aggregate size
         num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        max_agg_bodies = num_franka_bodies + 4     # 1 for table, table stand, cubeA, cubeB
-        max_agg_shapes = num_franka_shapes + 4     # 1 for table, table stand, cubeA, cubeB
+        max_agg_bodies = num_franka_bodies + 6    # 1 for table, table stand, cubeA, cubeB
+        max_agg_shapes = num_franka_shapes + 6    # 1 for table, table stand, cubeA, cubeB
 
         self.frankas = []
         self.envs = []
 
+        camera_props = gymapi.CameraProperties()
+        camera_props.horizontal_fov = 75.0
+        camera_props.width = 640
+        camera_props.height = 480    
+        self.ch_map = []   
         # Create environments
         for i in range(self.num_envs):
             # create env instance
@@ -340,26 +367,32 @@ class FrankaToolSelect(VecTask):
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
+            cubeC_actor = self.gym.create_actor(env_ptr, cubeC_asset, cubeC_start_pose, "cubeC", i, 6, 0)
+            cubeD_actor = self.gym.create_actor(env_ptr, cubeD_asset, cubeD_start_pose, "cubeD", i, 8, 0)
             # Create cubes
             self._cubeA_id = self.gym.create_actor(env_ptr, cubeA_asset, cubeA_start_pose, "cubeA", i, 2, 0)
             self._cubeB_id = self.gym.create_actor(env_ptr, cubeB_asset, cubeB_start_pose, "cubeB", i, 4, 0)
             # props = self.gym.get_actor_rigid_body_properties(env_ptr, self._cubeA_id)[0]
             # print(props.mass)
             # Set colors
-            # self.gym.set_rigid_body_color(env_ptr, self._cubeA_id, 0, gymapi.MESH_VISUAL, cubeA_color)
-            # self.gym.set_rigid_body_color(env_ptr, self._cubeB_id, 0, gymapi.MESH_VISUAL, cubeB_color)
+            self.gym.set_rigid_body_color(env_ptr, self._cubeA_id, 0, gymapi.MESH_VISUAL, cubeA_color)
+            self.gym.set_rigid_body_color(env_ptr, cubeD_actor, 0, gymapi.MESH_VISUAL, cubeD_color)
 
+            ch = self.gym.create_camera_sensor(env_ptr, camera_props)
+            pos = gymapi.Vec3(0.3, 0.6, 1.75)
+            # self.gym.set_camera_transform(ch, env_ptr, gymapi.Transform(p=pos, r=gymapi.Quat(0.707, 0.0, -0.707, 0.0)))
+            self.gym.set_camera_transform(ch, env_ptr, gymapi.Transform(p=pos, r=gymapi.Quat(0.0, 0.707, 0, 0.707)))
+            self.ch_map.append(ch)
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
             # Store the created env pointers
             self.envs.append(env_ptr)
             self.frankas.append(franka_actor)
-
+        self.gym.render_all_camera_sensors(self.sim)
         # Setup init state buffer
         self._init_cubeA_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_cubeB_state = torch.zeros(self.num_envs, 13, device=self.device)
-
         # Setup data
         self.init_data()
 
@@ -418,7 +451,7 @@ class FrankaToolSelect(VecTask):
         self._gripper_control = self._pos_control[:, 7:9]
 
         # Initialize indices
-        self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
+        self._global_indices = torch.arange(self.num_envs * 7, dtype=torch.int32,
                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
@@ -446,6 +479,7 @@ class FrankaToolSelect(VecTask):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_jacobian_tensors(self.sim)
         self.gym.refresh_mass_matrix_tensors(self.sim)
+        self.gym.render_all_camera_sensors(self.sim)
 
         # Refresh states
         self._update_states()
@@ -470,13 +504,13 @@ class FrankaToolSelect(VecTask):
 
         # Reset cubes, sampling cube B first, then A
         # if not self._i:
-        self._reset_init_cube_state(cube='B', env_ids=env_ids, check_valid=False)
-        self._reset_init_cube_state(cube='A', env_ids=env_ids, check_valid=True)
+        # self._reset_init_cube_state(cube='B', env_ids=env_ids, check_valid=False)
+        # self._reset_init_cube_state(cube='A', env_ids=env_ids, check_valid=True)
         # self._i = True
 
         # Write these new init states to the sim states
-        self._cubeA_state[env_ids] = self._init_cubeA_state[env_ids]
-        self._cubeB_state[env_ids] = self._init_cubeB_state[env_ids]
+        # self._cubeA_state[env_ids] = self._init_cubeA_state[env_ids]
+        # self._cubeB_state[env_ids] = self._init_cubeB_state[env_ids]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), 9), device=self.device)
@@ -496,7 +530,6 @@ class FrankaToolSelect(VecTask):
         # NOTE: Task takes care of actually propagating these controls in sim using the SimActions API
         self._pos_control[env_ids, :] = pos
         self._effort_control[env_ids, :] = torch.zeros_like(pos)
-
         # Deploy updates
         multi_env_ids_int32 = self._global_indices[env_ids, 0].flatten()
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
@@ -513,10 +546,10 @@ class FrankaToolSelect(VecTask):
                                               len(multi_env_ids_int32))
 
         # Update cube states
-        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -2:].flatten()
-        self.gym.set_actor_root_state_tensor_indexed(
-            self.sim, gymtorch.unwrap_tensor(self._root_state),
-            gymtorch.unwrap_tensor(multi_env_ids_cubes_int32), len(multi_env_ids_cubes_int32))
+        # multi_env_ids_cubes_int32 = self._global_indices[env_ids, -2:].flatten()
+        # self.gym.set_actor_root_state_tensor_indexed(
+        #     self.sim, gymtorch.unwrap_tensor(self._root_state),
+        #     gymtorch.unwrap_tensor(multi_env_ids_cubes_int32), len(multi_env_ids_cubes_int32))
 
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
@@ -663,6 +696,9 @@ class FrankaToolSelect(VecTask):
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
+        if self.progress_buf[0]==20:
+            rgb_filename = "rgb_env0_cam0.png"
+            self.gym.write_camera_image_to_file(self.sim, self.envs[0], self.ch_map[0], gymapi.IMAGE_COLOR, rgb_filename)
         self.progress_buf += 1
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)

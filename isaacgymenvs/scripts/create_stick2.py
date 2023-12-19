@@ -47,7 +47,7 @@ for width in width_list:
                 for d in degree: 
                     points = get_points(length1,length2,d,width)
                     mesh = create_mesh(points,0.05)
-                    mesh.save("ply_dataset/stick2_L1{}_L2{}_D{}_W{}_H5.ply".format(int(length1*100),int(length2*100),int(d),int(width*100)))
+                    # mesh.save("ply_dataset/stick2_L1{}_L2{}_D{}_W{}_H5.ply".format(int(length1*100),int(length2*100),int(d),int(width*100)))
                     mesh_list.append(mesh)
                     title_list.append("L1{}_L2{}_D{}_W{}".format(int(length1*100),int(length2*100),int(d),int(width*100)))
 num = len(mesh_list)
@@ -62,7 +62,7 @@ for i in range(num_x):
         if i*num_y+j<num:
             p.subplot(i,j)
             p.add_mesh(mesh_list[i*num_y+j],color='lightblue',show_edges=True)
-            # p.export_obj('../../assets/urdf/robotool/meshes2/stick2_'+title_list[i*num_y+j]+'_H5.obj') 
+            p.export_obj('../../assets/urdf/robotool/meshes2/stick2_'+title_list[i*num_y+j]+'_H5.obj') 
             # p.add_title(title_list[i*num_y+j])
 
 p.save_graphic('stick2.svg')

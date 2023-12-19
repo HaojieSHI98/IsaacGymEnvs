@@ -20,6 +20,6 @@ for i in range(2000):
     # if i%200==1:
     #     envs.reset_idx(torch.arange(num_envs))
     random_actions = 2.0 * torch.rand((num_envs,) + envs.action_space.shape, device = 'cuda:0') - 1.0
-    obs,re,reset,info = envs.step(random_actions)
+    obs,re,reset,info = envs.step(random_actions*0)
     # print(obs["obs"][:2,:12])
     # print(random_actions)

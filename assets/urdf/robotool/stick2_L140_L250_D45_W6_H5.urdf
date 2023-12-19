@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="stick">
+    <link name="stick">
+        <visual>
+            <geometry>
+                <mesh filename="meshes2/stick2_L140_L250_D45_W6_H5.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <mesh filename="meshes2/stick2_L140_L250_D45_W6_H5.obj"/>
+            </geometry>
+            <!-- <sdf resolution="256"/> -->
+        </collision>
+    </link>
+</robot>

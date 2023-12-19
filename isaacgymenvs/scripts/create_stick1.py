@@ -30,14 +30,17 @@ def create_mesh(poly_points,h):
     return holey_solid
 
 mesh_list = []
-width_list = [0.03,0.06,0.08]
-length_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+# width_list = [0.03,0.06,0.08]
+# length_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+width_list = [0.06]
+length_list = [0.7,0.8,0.9,1.0]
 title_list = []
 for width in width_list:
     for length in length_list:
         points = get_points(length,width)
+        print(width,length,points)
         mesh = create_mesh(points,0.05)
-        mesh.save("ply_dataset/stick1_L{}_W{}_H5.ply".format(int(length*100),int(width*100)))
+        # mesh.save("ply_dataset/stick1_L{}_W{}_H5.ply".format(int(length*100),int(width*100)))
         mesh_list.append(mesh)
         title_list.append("L{}_W{}".format(int(length*100),int(width*100)))
 num = len(mesh_list)
@@ -52,7 +55,7 @@ for i in range(num_x):
         if i*num_y+j<num:
             p.subplot(i,j)
             p.add_mesh(mesh_list[i*num_y+j],color='lightblue',show_edges=True)
-            # p.export_obj('../../assets/urdf/robotool/meshes2/stick1_'+title_list[i*num_y+j]+'_H5.obj') 
+            p.export_obj('../../assets/urdf/robotool/meshes2/stick1_'+title_list[i*num_y+j]+'_H5.obj') 
             # p.add_title(title_list[i*num_y+j])
 
 p.save_graphic('stick1.svg')
